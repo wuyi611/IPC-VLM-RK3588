@@ -1,0 +1,10 @@
+.cmake-check/*
+.devcontainer/
+3rdparty/
+asset/
+build/
+datasets/
+py_utils/
+ffmpeg-rockchip-build/
+ffmpeg-rockchip-src/
+build_scan/
