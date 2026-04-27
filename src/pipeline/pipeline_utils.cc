@@ -80,7 +80,7 @@ void PrintRuntimeStats(const RuntimeStats &stats,
                        double avg_latency_ms) {
     // 当前统计窗口内的平均渲染 FPS。
     double fps = interval_ms > 0.0 ? (interval_frames * 1000.0 / interval_ms) : 0.0;
-    printf("stats: fps=%.2f decode=%.2fms wait_infer=%.2fms pre=%.2fms npu=%.2fms post=%.2fms infer=%.2fms wait_render=%.2fms latency=%.2fms captured=%llu decoded=%llu inferred=%llu rendered=%llu drop_cap=%llu drop_dec=%llu drop_rnd=%llu\n",
+    printf("stats: fps=%.2f decode=%.2fms wait_infer=%.2fms pre=%.2fms npu=%.2fms post=%.2fms infer=%.2fms wait_render=%.2fms latency=%.2fms captured=%llu decoded=%llu inferred=%llu rendered=%llu llm_sub=%llu llm_ok=%llu llm_fail=%llu drop_cap=%llu drop_dec=%llu drop_rnd=%llu\n",
            fps,
            avg_decode_ms,
            avg_decode_queue_ms,
@@ -94,6 +94,9 @@ void PrintRuntimeStats(const RuntimeStats &stats,
            static_cast<unsigned long long>(stats.decoded.load(std::memory_order_relaxed)),
            static_cast<unsigned long long>(stats.inferred.load(std::memory_order_relaxed)),
            static_cast<unsigned long long>(stats.rendered.load(std::memory_order_relaxed)),
+           static_cast<unsigned long long>(stats.llm_submitted.load(std::memory_order_relaxed)),
+           static_cast<unsigned long long>(stats.llm_completed.load(std::memory_order_relaxed)),
+           static_cast<unsigned long long>(stats.llm_failed.load(std::memory_order_relaxed)),
            static_cast<unsigned long long>(stats.dropped_capture_queue.load(std::memory_order_relaxed)),
            static_cast<unsigned long long>(stats.dropped_decode_queue.load(std::memory_order_relaxed)),
            static_cast<unsigned long long>(stats.dropped_render_queue.load(std::memory_order_relaxed)));

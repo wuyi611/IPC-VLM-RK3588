@@ -37,6 +37,17 @@ bool ParsePositiveInt(const char *text, int *value) {
     return true;
 }
 
+// 将字符串解析为非负整数。
+bool ParseNonNegativeInt(const char *text, int *value) {
+    char *end = NULL;
+    long parsed = strtol(text, &end, 10);
+    if (end == text || *end != '\0' || parsed < 0 || parsed > 1024 * 1024) {
+        return false;
+    }
+    *value = static_cast<int>(parsed);
+    return true;
+}
+
 // 解析模型类型。
 bool ParseModelType(const char *text, std::string *model_type) {
     if (text == NULL || model_type == NULL) {
@@ -70,13 +81,21 @@ bool AppOptionsParser::Parse(int argc, char **argv, AppOptions *options) {
 
     // 先写入一组默认配置，
     // 用户如果显式传入可选参数，再覆盖这些默认值。
-    options->infer_thread_count = 3;
+    options->infer_thread_count = DefaultInferThreadCount();
     options->capture_queue_size = 3;
     options->decode_queue_size = 3;
     options->render_queue_size = 3;
     options->stats_interval = 30;
     options->enable_display = true;
     options->log_detections = false;
+    options->enable_llm = false;
+    options->llm_config_path = "src/cloud/providers/config.json";
+    options->llm_queue_size = 1;
+    options->llm_sample_every = 30;
+    options->llm_min_interval_ms = 2000;
+    options->llm_image_width = 640;
+    options->llm_image_height = 360;
+    options->llm_output_dir = "llm_samples";
 
     // 从第 3 个参数开始解析所有可选项。
     for (int i = 3; i < argc; ++i) {
@@ -123,6 +142,46 @@ bool AppOptionsParser::Parse(int argc, char **argv, AppOptions *options) {
         } else if (arg == "--log-detections") {
             // 打开逐帧检测结果日志输出。
             options->log_detections = true;
+        } else if (arg == "--enable-llm") {
+            // 启用异步 LLM 场景理解支路。
+            options->enable_llm = true;
+        } else if (arg == "--llm-config" && i + 1 < argc) {
+            // 指定 LLM 配置文件路径。
+            options->llm_config_path = argv[++i];
+            if (options->llm_config_path.empty()) {
+                return false;
+            }
+        } else if (arg == "--llm-queue" && i + 1 < argc) {
+            // 设置推理到 LLM 之间的队列深度。
+            if (!ParsePositiveInt(argv[++i], &options->llm_queue_size)) {
+                return false;
+            }
+        } else if (arg == "--llm-sample-every" && i + 1 < argc) {
+            // 每多少帧送一次 LLM。
+            if (!ParsePositiveInt(argv[++i], &options->llm_sample_every)) {
+                return false;
+            }
+        } else if (arg == "--llm-min-interval-ms" && i + 1 < argc) {
+            // 两次 LLM 请求之间的最小时间间隔。
+            if (!ParseNonNegativeInt(argv[++i], &options->llm_min_interval_ms)) {
+                return false;
+            }
+        } else if (arg == "--llm-image-width" && i + 1 < argc) {
+            // LLM 抽样图的缩放宽度。
+            if (!ParsePositiveInt(argv[++i], &options->llm_image_width)) {
+                return false;
+            }
+        } else if (arg == "--llm-image-height" && i + 1 < argc) {
+            // LLM 抽样图的缩放高度。
+            if (!ParsePositiveInt(argv[++i], &options->llm_image_height)) {
+                return false;
+            }
+        } else if (arg == "--llm-output-dir" && i + 1 < argc) {
+            // LLM 抽样图的临时输出目录。
+            options->llm_output_dir = argv[++i];
+            if (options->llm_output_dir.empty()) {
+                return false;
+            }
         } else {
             // 参数未知，或者缺少所需取值时，直接视为解析失败。
             return false;
@@ -156,6 +215,14 @@ void AppOptionsParser::PrintUsage(const char *program) {
     printf("  --labels PATH       Label file path (required)\n");
     printf("  --no-display        Disable local rendering for max throughput\n");
     printf("  --log-detections    Print every detection result\n");
+    printf("  --enable-llm        Enable async LLM scene understanding\n");
+    printf("  --llm-config PATH   LLM config file path\n");
+    printf("  --llm-queue N       Inference -> LLM queue depth\n");
+    printf("  --llm-sample-every N  Sample every N frames for LLM\n");
+    printf("  --llm-min-interval-ms N  Min interval between LLM requests\n");
+    printf("  --llm-image-width N   LLM sample image width\n");
+    printf("  --llm-image-height N  LLM sample image height\n");
+    printf("  --llm-output-dir PATH Temp directory for LLM sample images\n");
 }
 
 }  // namespace rknn_demo

@@ -27,6 +27,7 @@ find_package(OpenCV REQUIRED)
 set(FFMPEG_RK_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ffmpeg-rk)
 set(FFMPEG_RK_INCLUDE_DIR ${FFMPEG_RK_ROOT}/include)
 set(FFMPEG_RK_LIB_DIR ${FFMPEG_RK_ROOT}/lib)
+set(CURL_FALLBACK_INCLUDE_DIR /usr/include/x86_64-linux-gnu)
 set(FFMPEG_RK_SHARED_LIBS
     ${FFMPEG_RK_LIB_DIR}/libavformat.so
     ${FFMPEG_RK_LIB_DIR}/libavcodec.so
@@ -60,6 +61,7 @@ add_executable(${PROJECT_NAME}
     src/display/drm_display.cc
     src/media/ffmpeg_demuxer.cc
     src/media/mpp_decoder.cc
+    src/cloud/providers/LLMApi.cpp
     src/model/postprocess.cc
     src/model/rknn_input_buffer_utils.cc
     src/model/yolov8_postprocess.cc
@@ -67,6 +69,7 @@ add_executable(${PROJECT_NAME}
     src/pipeline/stages/capture_stage.cc
     src/pipeline/stages/decode_stage.cc
     src/pipeline/stages/inference_stage.cc
+    src/pipeline/stages/llm_stage.cc
     src/pipeline/stages/render_stage.cc
     src/model/yolov5_model.cc
     src/model/yolov8_model.cc
@@ -82,6 +85,14 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${FFMPEG_RK_INCLUDE_DIR}
     ${LIBRKNNRT_INCLUDES}
 )
+
+if (EXISTS ${CURL_FALLBACK_INCLUDE_DIR}/curl/curl.h)
+    set_source_files_properties(
+        src/cloud/providers/LLMApi.cpp
+        PROPERTIES
+        COMPILE_OPTIONS "-idirafter${CURL_FALLBACK_INCLUDE_DIR}"
+    )
+endif()
 
 # 库文件
 # 1. 显式告知链接器：去板子备份的库目录里搜
@@ -101,6 +112,7 @@ target_link_libraries(${PROJECT_NAME}
     ${LIBRKNNRT}
     dl
     drm
+    /rk_sysroot/usr/lib/aarch64-linux-gnu/libcurl.so.4
     /rk_sysroot/usr/lib/aarch64-linux-gnu/librockchip_mpp.so
     # 直接锁定物理真身，跳过所有软链接陷阱
     /rk_sysroot/usr/lib/aarch64-linux-gnu/blas/libblas.so.3.10.0

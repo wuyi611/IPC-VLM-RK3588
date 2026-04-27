@@ -1,0 +1,11 @@
+{
+  "api_key": "sk-jmYxt0I0vGQv070LonVcFEYAhy2bEqBLTqriga1RVMFSATCj",
+  "base_url": "https://geek.tm2.xin/v1",
+  "mode": "Vision",
+  "text_model": "gpt-5.4",
+  "text_prompt": "你是什么模型",
+  "vision_model": "gpt-5.4",
+  "vision_prompt": "请描述这张图片里的内容。",
+  "image_path": "build/test.png",
+  "image_detail": "auto"
+}

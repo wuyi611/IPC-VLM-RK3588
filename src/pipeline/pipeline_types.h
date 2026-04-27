@@ -4,7 +4,10 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <string>
 #include <string.h>
+#include <unistd.h>
+#include <utility>
 
 #include <rockchip/mpp_frame.h>
 
@@ -201,6 +204,84 @@ struct ResultPacket {
     object_detect_result_list detections;
 };
 
+// 表示发往云端 LLM 的一份抽样请求。
+// 请求对象独占一张临时图片文件的生命周期，析构时会自动删除该文件。
+struct LlmRequestPacket {
+    // 帧编号。
+    uint64_t frame_id;
+
+    // 采集时间戳。
+    double capture_ts_ms;
+
+    // 推理完成时间戳。
+    double infer_done_ts_ms;
+
+    // 当前帧的检测结果。
+    object_detect_result_list detections;
+
+    // 临时图片文件路径。
+    std::string image_path;
+
+    // 是否在析构时自动删除临时图片。
+    bool delete_image_on_destroy;
+
+    LlmRequestPacket()
+        : frame_id(0),
+          capture_ts_ms(0.0),
+          infer_done_ts_ms(0.0),
+          delete_image_on_destroy(false) {
+        memset(&detections, 0, sizeof(detections));
+    }
+
+    ~LlmRequestPacket() {
+        CleanupImageFile();
+    }
+
+    LlmRequestPacket(const LlmRequestPacket &) = delete;
+    LlmRequestPacket &operator=(const LlmRequestPacket &) = delete;
+
+    LlmRequestPacket(LlmRequestPacket &&other) noexcept
+        : frame_id(other.frame_id),
+          capture_ts_ms(other.capture_ts_ms),
+          infer_done_ts_ms(other.infer_done_ts_ms),
+          detections(other.detections),
+          image_path(std::move(other.image_path)),
+          delete_image_on_destroy(other.delete_image_on_destroy) {
+        other.frame_id = 0;
+        other.capture_ts_ms = 0.0;
+        other.infer_done_ts_ms = 0.0;
+        memset(&other.detections, 0, sizeof(other.detections));
+        other.delete_image_on_destroy = false;
+    }
+
+    LlmRequestPacket &operator=(LlmRequestPacket &&other) noexcept {
+        if (this != &other) {
+            CleanupImageFile();
+            frame_id = other.frame_id;
+            capture_ts_ms = other.capture_ts_ms;
+            infer_done_ts_ms = other.infer_done_ts_ms;
+            detections = other.detections;
+            image_path = std::move(other.image_path);
+            delete_image_on_destroy = other.delete_image_on_destroy;
+            other.frame_id = 0;
+            other.capture_ts_ms = 0.0;
+            other.infer_done_ts_ms = 0.0;
+            memset(&other.detections, 0, sizeof(other.detections));
+            other.delete_image_on_destroy = false;
+        }
+        return *this;
+    }
+
+private:
+    void CleanupImageFile() {
+        if (delete_image_on_destroy && !image_path.empty()) {
+            unlink(image_path.c_str());
+        }
+        image_path.clear();
+        delete_image_on_destroy = false;
+    }
+};
+
 // 运行时统计信息。
 // 所有字段都用原子变量，便于多线程并发更新而不额外加锁。
 struct RuntimeStats {
@@ -225,6 +306,15 @@ struct RuntimeStats {
     // 因渲染队列满而丢弃的帧数。
     std::atomic<uint64_t> dropped_render_queue;
 
+    // 成功送入 LLM 队列的请求数。
+    std::atomic<uint64_t> llm_submitted;
+
+    // 成功拿到 LLM 回复的请求数。
+    std::atomic<uint64_t> llm_completed;
+
+    // LLM 请求失败的次数。
+    std::atomic<uint64_t> llm_failed;
+
     // 构造时把所有统计值清零。
     RuntimeStats()
         : captured(0),
@@ -233,7 +323,10 @@ struct RuntimeStats {
           rendered(0),
           dropped_capture_queue(0),
           dropped_decode_queue(0),
-          dropped_render_queue(0) {}
+          dropped_render_queue(0),
+          llm_submitted(0),
+          llm_completed(0),
+          llm_failed(0) {}
 };
 
 // 整条流水线共享的运行时状态。
@@ -247,10 +340,14 @@ struct PipelineRuntime {
     // 全局统计信息。
     RuntimeStats stats;
 
+    // 上一次成功送入 LLM 队列的时间戳，单位毫秒。
+    std::atomic<uint64_t> last_llm_submit_ms;
+
     // 根据推理线程数初始化运行时状态。
     explicit PipelineRuntime(int infer_thread_count)
         : stop_requested(false),
-          active_infer_workers(infer_thread_count) {}
+          active_infer_workers(infer_thread_count),
+          last_llm_submit_ms(0) {}
 };
 
 }  // namespace rknn_demo

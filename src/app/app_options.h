@@ -52,6 +52,30 @@ struct AppOptions {
 
     // 是否打印每一帧的检测结果明细.
     bool log_detections;
+
+    // 是否启用异步 LLM 场景理解支路。
+    bool enable_llm;
+
+    // LLM 请求配置文件路径。
+    std::string llm_config_path;
+
+    // 推理阶段到 LLM 阶段之间的队列深度。
+    int llm_queue_size;
+
+    // 每多少帧抽样一次，1 表示每帧都抽样。
+    int llm_sample_every;
+
+    // 两次 LLM 请求之间的最小间隔，单位毫秒。
+    int llm_min_interval_ms;
+
+    // 发送给 LLM 的抽样图宽度。
+    int llm_image_width;
+
+    // 发送给 LLM 的抽样图高度。
+    int llm_image_height;
+
+    // 抽样图像临时输出目录。
+    std::string llm_output_dir;
 };
 
 /*

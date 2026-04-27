@@ -21,6 +21,7 @@
 #include "pipeline/stages/capture_stage.h"
 #include "pipeline/stages/decode_stage.h"
 #include "pipeline/stages/inference_stage.h"
+#include "pipeline/stages/llm_stage.h"
 #include "pipeline/stages/render_stage.h"
 
 // 文件说明：
@@ -176,7 +177,8 @@ PipelineApp::PipelineApp(const AppOptions &options)
       // 队列深度由启动参数决定，构造时直接固定下来。
       queues_(static_cast<size_t>(options.capture_queue_size),
               static_cast<size_t>(options.decode_queue_size),
-              static_cast<size_t>(options.render_queue_size)),
+              static_cast<size_t>(options.render_queue_size),
+              static_cast<size_t>(options.llm_queue_size)),
       // 运行时状态需要知道推理线程数，用于统计和退出协调。
       runtime_(options.infer_thread_count),
       // 为每个推理线程预留一个独立的 RKNN 上下文槽位。
@@ -307,6 +309,7 @@ int PipelineApp::Run() {
     // 推理阶段对象会在模型上下文准备好之后再创建。
     CaptureStage capture_stage(options_, std::move(demuxer), &queues_, &runtime_);  // 负责持续从输入源读取压缩包。
     RenderStage render_stage(options_, &queues_, &runtime_);  // 负责消费推理结果并执行显示或统计输出。
+    LlmStage llm_stage(options_, &queues_, &runtime_);  // 负责异步把抽样图片送给云端视觉模型。
 
     // 第五步：初始化所有推理上下文。
     // 这里放在解码器准备完成之后，有助于保持底层组件初始化顺序稳定。
@@ -326,6 +329,14 @@ int PipelineApp::Run() {
         return CleanupAndReturn(-1);
     }
     post_process_initialized = true;
+    if (StopRequested()) {
+        return CleanupAndReturn(0);
+    }
+
+    if (options_.enable_llm && !llm_stage.Init()) {
+        printf("llm stage init failed\n");
+        return CleanupAndReturn(-1);
+    }
     if (StopRequested()) {
         return CleanupAndReturn(0);
     }
@@ -354,6 +365,10 @@ int PipelineApp::Run() {
     }
 
     std::thread render_thread(&RenderStage::Run, &render_stage);  // 渲染线程。
+    std::thread llm_thread;  // LLM 线程按需启动。
+    if (options_.enable_llm) {
+        llm_thread = std::thread(&LlmStage::Run, &llm_stage);
+    }
 
     // 第九步：等待所有线程退出。
     // 只有所有阶段都自然结束或收到停止信号后，程序才进入统一清理流程。
@@ -370,6 +385,9 @@ int PipelineApp::Run() {
     }
     if (render_thread.joinable()) {
         render_thread.join();
+    }
+    if (llm_thread.joinable()) {
+        llm_thread.join();
     }
 
     // 第十步：统一释放模型和后处理资源。

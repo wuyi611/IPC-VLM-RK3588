@@ -18,10 +18,12 @@ public:
     // 使用三段队列各自的容量创建队列集合。
     PipelineQueues(size_t capture_queue_size,
                    size_t decode_queue_size,
-                   size_t render_queue_size)
+                   size_t render_queue_size,
+                   size_t llm_queue_size)
         : capture_queue_(capture_queue_size),
           decode_queue_(decode_queue_size),
-          render_queue_(render_queue_size) {}
+          render_queue_(render_queue_size),
+          llm_queue_(llm_queue_size) {}
 
     // 返回“采集 -> 解码”阶段之间的压缩包队列。
     BoundedQueue<EncodedPacket> &capture_queue() { return capture_queue_; }
@@ -32,12 +34,16 @@ public:
     // 返回“推理 -> 渲染”阶段之间的结果队列。
     BoundedQueue<ResultPacket> &render_queue() { return render_queue_; }
 
+    // 返回“推理 -> LLM”阶段之间的抽样请求队列。
+    BoundedQueue<LlmRequestPacket> &llm_queue() { return llm_queue_; }
+
     // 停止整条流水线的全部队列。
     // 一旦某个阶段判断程序需要退出，就可以调用这里唤醒所有等待线程。
     void StopAll() {
         capture_queue_.stop();
         decode_queue_.stop();
         render_queue_.stop();
+        llm_queue_.stop();
     }
 
 private:
@@ -49,6 +55,9 @@ private:
 
     // 存放推理结果和显示帧的队列。
     BoundedQueue<ResultPacket> render_queue_;
+
+    // 存放送往 LLM 的抽样请求队列。
+    BoundedQueue<LlmRequestPacket> llm_queue_;
 };
 
 }  // namespace rknn_demo
